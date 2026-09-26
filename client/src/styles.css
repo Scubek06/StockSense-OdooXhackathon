@@ -1,6 +1,5 @@
 :root {
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
-  font-size: larger;
   color: #d9e0e7;
   background: #101720;
   text-rendering: optimizeLegibility;
@@ -278,4 +277,39 @@ td b { color: #ced8e0; font-size: 10px; font-weight: 500; }
   .stock-summary { gap: 10px; flex-wrap: wrap; }
   .quick-action-row { grid-template-columns: 1fr; }
   .modal-fields { grid-template-columns: 1fr; }
+}
+
+/* Global readability improvements */
+html {
+  font-size: 16px;
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font-size: 15px !important;
+}
+
+table,
+th,
+td {
+  font-size: 14px;
+}
+
+label {
+  font-size: 14px;
+}
+
+p {
+  font-size: 15px;
+}
+
+small {
+  font-size: 13px;
 }
