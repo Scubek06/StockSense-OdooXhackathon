@@ -29,9 +29,11 @@ const titles = {
 const operations = ['receipts', 'deliveries', 'transfers', 'adjustments'];
 const statusClass = (status) => `status status-${String(status || 'draft').toLowerCase()}`;
 const get = (object, ...keys) => keys.map((key) => object?.[key]).find((value) => value !== undefined && value !== null);
+const emptyData = () => ({ products: [], categories: [], warehouses: [], locations: [], stock: [], ledger: [], receipts: [], deliveries: [], transfers: [], adjustments: [], dashboard: {} });
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('stocksense-token'));
+  const [token, setToken] = useState(() => localStorage.getItem('stocksense-token'));
+  const [restoringSession, setRestoringSession] = useState(() => Boolean(localStorage.getItem('stocksense-token')));
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -42,7 +44,7 @@ function App() {
   const [locationFilter, setLocationFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [documentFilter, setDocumentFilter] = useState('');
-  const [data, setData] = useState({ products: [], categories: [], warehouses: [], locations: [], stock: [], ledger: [], receipts: [], deliveries: [], transfers: [], adjustments: [], dashboard: {} });
+  const [data, setData] = useState(emptyData);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +55,8 @@ function App() {
 
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 3200); };
   const loadPage = useCallback(async () => {
+    const sessionToken = localStorage.getItem('stocksense-token');
+    if (!sessionToken) return;
     setLoading(true);
     setError('');
     try {
@@ -91,27 +95,66 @@ function App() {
         if (warehouseFilter) stockFilters.set('warehouseId', warehouseFilter);
         next.stock = listOf(await request(`/stock${stockFilters.size ? `?${stockFilters}` : ''}`));
       }
-      setData((current) => ({ ...current, ...next }));
+      if (localStorage.getItem('stocksense-token') === sessionToken) {
+        setData((current) => ({ ...current, ...next }));
+      }
     } catch (e) {
-      setError(e.message);
+      if (localStorage.getItem('stocksense-token') === sessionToken) setError(e.message);
     } finally {
-      setLoading(false);
+      if (localStorage.getItem('stocksense-token') === sessionToken) setLoading(false);
     }
   }, [page, warehouseFilter, locationFilter, categoryFilter, statusFilter, documentFilter]);
 
   useEffect(() => {
-    if (!token) return;
-    request('/auth/me').then((result) => setUser(result.user || result)).catch(() => { localStorage.removeItem('stocksense-token'); setToken(null); });
+    if (!token) {
+      setRestoringSession(false);
+      return undefined;
+    }
+    let active = true;
+    const tokenBeingChecked = token;
+    const isCurrentSession = () => active && localStorage.getItem('stocksense-token') === tokenBeingChecked;
+    request('/auth/me')
+      .then((result) => {
+        if (isCurrentSession()) setUser(result.user || result);
+      })
+      .catch(() => {
+        if (!isCurrentSession()) return;
+        localStorage.removeItem('stocksense-token');
+        setToken(null);
+        setUser(null);
+        setData(emptyData());
+      })
+      .finally(() => {
+        if (isCurrentSession()) setRestoringSession(false);
+      });
+    return () => { active = false; };
   }, [token]);
   useEffect(() => { if (token && user) loadPage(); }, [token, user, loadPage]);
 
   const logout = async () => {
-    try { await request('/auth/logout', { method: 'POST' }); }
+    const revocation = request('/auth/logout', { method: 'POST' });
+    localStorage.removeItem('stocksense-token');
+    setToken(null);
+    setRestoringSession(false);
+    setUser(null);
+    setPage('dashboard');
+    setMenuOpen(false);
+    setSearch('');
+    setCategoryFilter('');
+    setWarehouseFilter('');
+    setLocationFilter('');
+    setStatusFilter('');
+    setDocumentFilter('');
+    setData(emptyData());
+    setLoading(false);
+    setBusy(false);
+    setError('');
+    setDialog(null);
+    setDialogError('');
+    setDeletingCategoryId(null);
+    setDeletingLocationId(null);
+    try { await revocation; }
     catch (e) { setError(`Signed out locally; server token revocation failed: ${e.message}`); }
-    finally {
-      localStorage.removeItem('stocksense-token');
-      setToken(null); setUser(null); setPage('dashboard');
-    }
   };
   const login = async (credentials, action) => {
     setBusy(true); setError('');
@@ -216,7 +259,10 @@ function App() {
     return [];
   }, [page, data, search, categoryFilter, warehouseFilter, statusFilter]);
 
-  if (!token || (token && !user)) {
+  if (restoringSession) {
+    return <div className="auth-screen" aria-busy="true"><div className="loading-note" role="status" style={{ gridColumn: '1 / -1', placeSelf: 'center' }}><Activity size={15} /> Restoring your secure session…</div></div>;
+  }
+  if (!token || !user) {
     return <AuthScreen onSubmit={login} error={error} busy={busy} />;
   }
 
