@@ -77,7 +77,11 @@ function stockFilters(query, alias = 's') {
 
 inventoryRouter.get(['/categories', '/products/categories'], async (_request, response, next) => {
   try {
-    const result = await pool.query('SELECT id, name, description, created_at FROM categories ORDER BY name');
+    const result = await pool.query(
+      `SELECT c.id, c.name, c.description, c.created_at,
+              (SELECT COUNT(*)::int FROM products p WHERE p.category_id = c.id) AS product_count
+       FROM categories c ORDER BY c.name`
+    );
     response.json({ items: result.rows });
   } catch (error) { next(error); }
 });
@@ -96,9 +100,10 @@ inventoryRouter.post(['/categories', '/products/categories'], validateBody(categ
 inventoryRouter.patch(['/categories/:id', '/products/categories/:id'], validateBody(categorySchema.partial()), async (request, response, next) => {
   try {
     const result = await pool.query(
-      `UPDATE categories SET name = COALESCE($2, name), description = COALESCE($3, description)
+      `UPDATE categories SET name = COALESCE($2, name),
+                             description = CASE WHEN $4 THEN $3 ELSE description END
        WHERE id = $1 RETURNING id, name, description, created_at`,
-      [request.params.id, request.body.name, request.body.description]
+      [request.params.id, request.body.name, request.body.description, Object.hasOwn(request.body, 'description')]
     );
     if (!result.rowCount) throw badRequest('Category not found.', 404);
     response.json(result.rows[0]);
@@ -107,8 +112,23 @@ inventoryRouter.patch(['/categories/:id', '/products/categories/:id'], validateB
 
 inventoryRouter.delete(['/categories/:id', '/products/categories/:id'], async (request, response, next) => {
   try {
-    const result = await pool.query('DELETE FROM categories WHERE id = $1', [request.params.id]);
-    if (!result.rowCount) throw badRequest('Category not found.', 404);
+    await inTransaction(async (client) => {
+      const category = await client.query(
+        'SELECT id FROM categories WHERE id = $1 FOR UPDATE',
+        [request.params.id]
+      );
+      if (!category.rowCount) throw badRequest('Category not found.', 404);
+
+      const assignedProducts = await client.query(
+        'SELECT EXISTS (SELECT 1 FROM products WHERE category_id = $1) AS in_use',
+        [request.params.id]
+      );
+      if (assignedProducts.rows[0].in_use) {
+        throw badRequest('This category cannot be deleted because it is assigned to one or more products.', 409);
+      }
+
+      await client.query('DELETE FROM categories WHERE id = $1', [request.params.id]);
+    });
     response.status(204).end();
   } catch (error) { next(error); }
 });
@@ -274,6 +294,39 @@ inventoryRouter.post('/locations', validateBody(locationSchema), async (request,
     );
     response.status(201).json(result.rows[0]);
   } catch (error) { next(error); }
+});
+
+inventoryRouter.patch('/locations/:id', validateBody(locationSchema), async (request, response, next) => {
+  try {
+    const { warehouseId, name, code } = request.body;
+    const result = await pool.query(
+      `UPDATE locations
+       SET warehouse_id = $2, name = $3, code = $4
+       WHERE id = $1
+       RETURNING id, name, code, warehouse_id`,
+      [request.params.id, warehouseId, name, code]
+    );
+    if (!result.rowCount) throw badRequest('Location not found.', 404);
+    response.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+inventoryRouter.delete('/locations/:id', async (request, response, next) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM locations WHERE id = $1 RETURNING id',
+      [request.params.id]
+    );
+    if (!result.rowCount) throw badRequest('Location not found.', 404);
+    response.status(204).end();
+  } catch (error) {
+    if (error.code === '23001' || error.code === '23503') {
+      return response.status(409).json({
+        error: 'This location cannot be deleted because it is in use by inventory or operation history.'
+      });
+    }
+    next(error);
+  }
 });
 
 inventoryRouter.get('/stock', async (request, response, next) => {

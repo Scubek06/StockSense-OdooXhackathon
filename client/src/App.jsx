@@ -47,6 +47,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dialog, setDialog] = useState(null);
+  const [dialogError, setDialogError] = useState('');
+  const [deletingCategoryId, setDeletingCategoryId] = useState(null);
+  const [deletingLocationId, setDeletingLocationId] = useState(null);
 
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(''), 3200); };
   const loadPage = useCallback(async () => {
@@ -123,11 +126,38 @@ function App() {
   };
   const saveEntity = async (path, method, body, message) => {
     setBusy(true);
+    setDialogError('');
     try {
       await request(path, { method, body });
       setDialog(null); await loadPage(); notify(message);
-    } catch (e) { setError(e.message); }
+    } catch (e) { setDialogError(e.message); }
     finally { setBusy(false); }
+  };
+  const deleteCategory = async (item) => {
+    if (!window.confirm(`Delete "${item.name}"? Categories assigned to products cannot be deleted.`)) return;
+    setDeletingCategoryId(item.id);
+    setBusy(true);
+    try {
+      await request(`/categories/${item.id}`, { method: 'DELETE' });
+      await loadPage(); notify('Category deleted.');
+    } catch (e) { setError(e.message); }
+    finally {
+      setDeletingCategoryId(null);
+      setBusy(false);
+    }
+  };
+  const deleteLocation = async (item) => {
+    if (!window.confirm(`Delete "${item.name}"? Locations referenced by inventory or operation history cannot be deleted.`)) return;
+    setDeletingLocationId(item.id);
+    setBusy(true);
+    try {
+      await request(`/locations/${item.id}`, { method: 'DELETE' });
+      await loadPage(); notify('Location deleted.');
+    } catch (e) { setError(e.message); }
+    finally {
+      setDeletingLocationId(null);
+      setBusy(false);
+    }
   };
   const validateOperation = async (type, id) => {
     if (!window.confirm('Validate this operation? Stock will be updated and recorded in the ledger.')) return;
@@ -203,7 +233,7 @@ function App() {
       <main className="main">
         <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Menu size={20} /></button><div className="breadcrumb">StockSense <span>/</span> <b>{heading}</b></div><div className="top-actions"><div className="system-state"><i /> SYSTEM OPERATIONAL</div><button className="top-avatar" title="My profile" onClick={() => selectPage('profile')}>{(user.name || user.email || 'U').slice(0, 1).toUpperCase()}</button></div></header>
         <div className="content">
-          <div className="page-heading"><div><div className="eyebrow">WAREHOUSE CONTROL <span>•</span> LIVE</div><h1>{heading}</h1><p>{subheading}</p></div>{page === 'warehouse' ? <div className="heading-actions"><button className="button button-secondary" onClick={() => setDialog({ type: 'warehouse' })}><Plus size={16} />New warehouse</button><button className="button button-primary" onClick={() => setDialog({ type: 'location' })}><Plus size={16} />New location</button></div> : ['products', 'categories', ...operations].includes(page) && <button className="button button-primary" onClick={() => setDialog({ type: page === 'products' ? 'product' : page === 'categories' ? 'category' : ({ receipts: 'receipt', deliveries: 'delivery', transfers: 'transfer', adjustments: 'adjustment' })[page] })}><Plus size={16} />{page === 'products' ? 'New product' : page === 'categories' ? 'New category' : `New ${({ receipts: 'receipt', deliveries: 'delivery', transfers: 'transfer', adjustments: 'adjustment' })[page]}`}</button>}</div>
+          <div className="page-heading"><div><div className="eyebrow">WAREHOUSE CONTROL <span>•</span> LIVE</div><h1>{heading}</h1><p>{subheading}</p></div>{page === 'warehouse' ? <div className="heading-actions"><button className="button button-secondary" onClick={() => setDialog({ type: 'warehouse' })}><Plus size={16} />New warehouse</button><button className="button button-primary" onClick={() => { setDialogError(''); setDialog({ type: 'location' }); }}><Plus size={16} />New location</button></div> : ['products', 'categories', ...operations].includes(page) && <button className="button button-primary" onClick={() => setDialog({ type: page === 'products' ? 'product' : page === 'categories' ? 'category' : ({ receipts: 'receipt', deliveries: 'delivery', transfers: 'transfer', adjustments: 'adjustment' })[page] })}><Plus size={16} />{page === 'products' ? 'New product' : page === 'categories' ? 'New category' : `New ${({ receipts: 'receipt', deliveries: 'delivery', transfers: 'transfer', adjustments: 'adjustment' })[page]}`}</button>}</div>
           {error && <div className="alert alert-error"><CircleAlert size={17} /><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16} /></button></div>}
           {loading && <div className="loading-note" role="status"><Activity size={15} /> Syncing warehouse records…</div>}
           {!loading && !error && page === 'dashboard' && <Dashboard dashboard={data.dashboard} products={data.products} ledger={data.ledger} onNavigate={selectPage} onWarehouse={setWarehouseFilter} warehouse={warehouseFilter} warehouses={data.warehouses} locations={data.locations} categories={data.categories} location={locationFilter} onLocation={setLocationFilter} category={categoryFilter} onCategory={setCategoryFilter} status={statusFilter} onStatus={setStatusFilter} document={documentFilter} onDocument={setDocumentFilter} onRefresh={loadPage} />}
@@ -215,8 +245,8 @@ function App() {
               <span className="record-count">{rows.length} records</span>
             </div></div>
             {page === 'products' || page === 'reorder' ? <ProductTable rows={rows} onEdit={(item) => setDialog({ type: 'product', item })} onDelete={deleteProduct} /> :
-              page === 'categories' ? <CategoryTable rows={rows} /> :
-              page === 'warehouse' ? <LocationTable rows={rows} warehouses={data.warehouses} stock={data.stock} /> :
+              page === 'categories' ? <CategoryTable rows={rows} onEdit={(item) => { setDialogError(''); setDialog({ type: 'category', item }); }} onDelete={deleteCategory} deletingCategoryId={deletingCategoryId} busy={busy} /> :
+              page === 'warehouse' ? <LocationTable rows={rows} warehouses={data.warehouses} stock={data.stock} onEdit={(item) => { setDialogError(''); setDialog({ type: 'location', item }); }} onDelete={deleteLocation} deletingLocationId={deletingLocationId} busy={busy} /> :
               page === 'ledger' ? <LedgerTable rows={rows} /> :
               <OperationTable rows={rows} type={page} onValidate={validateOperation} onStatus={updateOperationStatus} onCancel={cancelOperation} />}
           </section>}
@@ -225,7 +255,7 @@ function App() {
         </div>
       </main>
       {menuOpen && <button className="scrim" onClick={() => setMenuOpen(false)} aria-label="Close navigation" />}
-      {dialog && <EntityDialog type={dialog.type} item={dialog.item} data={data} busy={busy} onClose={() => { setDialog(null); setError(''); }} onSave={(path, method, body) => saveEntity(path, method, body, 'Changes saved successfully.')} />}
+      {dialog && <EntityDialog type={dialog.type} item={dialog.item} data={data} busy={busy} error={dialogError} onDismissError={() => setDialogError('')} onClose={() => { setDialog(null); setError(''); setDialogError(''); }} onSave={(path, method, body) => saveEntity(path, method, body, 'Changes saved successfully.')} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -290,15 +320,19 @@ function ProductTable({ rows, onEdit, onDelete }) {
     return <tr key={p.id}><td><div className="product-cell"><span className="product-glyph"><Package size={16} /></span><span><b>{p.name}</b><small>{get(p, 'unit', 'unitOfMeasure') || 'units'}</small></span></div></td><td className="code">{p.sku || p.code || '—'}</td><td>{get(p, 'categoryName', 'category_name', 'category') || 'Uncategorized'}</td><td className="number-cell">{quantity.toLocaleString()}</td><td>{reorder}</td><td><span className={`stock-pill ${status === 'In stock' ? 'pill-green' : status === 'Low stock' ? 'pill-amber' : 'pill-red'}`}><i />{status}</span></td><td><span className="row-actions"><button className="text-button" onClick={() => onEdit(p)}>Edit</button><button className="icon-button row-delete" aria-label={`Delete ${p.name}`} onClick={() => onDelete(p)}><Trash2 size={14} /></button></span></td></tr>;
   })}</tbody></table></div>;
 }
-function CategoryTable({ rows }) {
+function CategoryTable({ rows, onEdit, onDelete, deletingCategoryId, busy }) {
   if (!rows.length) return <EmptyState icon={Boxes} title="No categories yet" detail="Create categories to organize the product catalog." />;
-  return <div className="table-scroll"><table><thead><tr><th>CATEGORY</th><th>DESCRIPTION</th><th>PRODUCTS</th></tr></thead><tbody>{rows.map((c) => <tr key={c.id}><td><b>{c.name}</b></td><td>{c.description || '—'}</td><td>{c.product_count ?? c.products_count ?? '—'}</td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>CATEGORY</th><th>DESCRIPTION</th><th>PRODUCTS</th><th>ACTIONS</th></tr></thead><tbody>{rows.map((c) => {
+    const isDeleting = deletingCategoryId === c.id;
+    return <tr key={c.id}><td><b>{c.name}</b></td><td>{c.description || '—'}</td><td>{c.productCount ?? c.product_count ?? c.products_count ?? '—'}</td><td><span className="row-actions"><button className="text-button" disabled={busy} onClick={() => onEdit(c)}>Edit</button><button className="text-button cancel-action" disabled={busy} onClick={() => onDelete(c)}>{isDeleting ? 'Deleting…' : <><Trash2 size={14} /> Delete</>}</button></span></td></tr>;
+  })}</tbody></table></div>;
 }
-function LocationTable({ rows, warehouses, stock }) {
+function LocationTable({ rows, warehouses, stock, onEdit, onDelete, deletingLocationId, busy }) {
   if (!rows.length) return <EmptyState icon={Warehouse} title="No locations yet" detail="Create a rack or storage location in a warehouse." />;
-  return <div className="table-scroll"><table><thead><tr><th>LOCATION</th><th>WAREHOUSE</th><th>CODE</th><th>STOCK UNITS</th></tr></thead><tbody>{rows.map((l) => {
+  return <div className="table-scroll"><table><thead><tr><th>LOCATION</th><th>WAREHOUSE</th><th>CODE</th><th>STOCK UNITS</th><th>ACTIONS</th></tr></thead><tbody>{rows.map((l) => {
     const quantity = stock.filter((s) => String(get(s, 'locationId', 'location_id')) === String(l.id)).reduce((sum, s) => sum + Number(s.quantity || 0), 0);
-    return <tr key={l.id}><td><b>{l.name}</b></td><td>{get(l, 'warehouseName', 'warehouse_name') || warehouses.find((w) => String(w.id) === String(get(l, 'warehouseId', 'warehouse_id')))?.name || '—'}</td><td className="code">{l.code || '—'}</td><td>{quantity.toLocaleString()}</td></tr>;
+    const isDeleting = deletingLocationId === l.id;
+    return <tr key={l.id}><td><b>{l.name}</b></td><td>{get(l, 'warehouseName', 'warehouse_name') || warehouses.find((w) => String(w.id) === String(get(l, 'warehouseId', 'warehouse_id')))?.name || '—'}</td><td className="code">{l.code || '—'}</td><td>{quantity.toLocaleString()}</td><td><span className="row-actions"><button className="text-button" disabled={busy} onClick={() => onEdit(l)}>Edit</button><button className="text-button cancel-action" disabled={busy} onClick={() => onDelete(l)}>{isDeleting ? 'Deleting…' : <><Trash2 size={14} /> Delete</>}</button></span></td></tr>;
   })}</tbody></table></div>;
 }
 function OperationTable({ rows, type, onValidate, onStatus, onCancel }) {
@@ -325,9 +359,9 @@ function LedgerTable({ rows }) {
 }
 function EmptyState({ icon: Icon, title, detail }) { return <div className="empty-state"><div className="empty-icon"><Icon size={22} /></div><b>{title}</b><span>{detail}</span></div>; }
 
-function EntityDialog({ type, item, data, busy, onClose, onSave }) {
-  const kind = type === 'receipt' ? 'Receipt' : type === 'delivery' ? 'Delivery order' : type === 'transfer' ? 'Internal transfer' : type === 'adjustment' ? 'Inventory adjustment' : type === 'product' ? (item ? 'Edit product' : 'New product') : type === 'category' ? 'New category' : type === 'warehouse' ? 'New warehouse' : 'New location';
-  const [values, setValues] = useState(type === 'product' && item ? { name: item.name, sku: item.sku || '', categoryId: item.categoryId || '', unit: item.unit || 'units', reorderLevel: item.reorderLevel ?? 0 } : {});
+function EntityDialog({ type, item, data, busy, error, onDismissError, onClose, onSave }) {
+  const kind = type === 'receipt' ? 'Receipt' : type === 'delivery' ? 'Delivery order' : type === 'transfer' ? 'Internal transfer' : type === 'adjustment' ? 'Inventory adjustment' : type === 'product' ? (item ? 'Edit product' : 'New product') : type === 'category' ? (item ? 'Edit category' : 'New category') : type === 'warehouse' ? 'New warehouse' : item ? 'Edit location' : 'New location';
+  const [values, setValues] = useState(type === 'product' && item ? { name: item.name, sku: item.sku || '', categoryId: item.categoryId || '', unit: item.unit || 'units', reorderLevel: item.reorderLevel ?? 0 } : type === 'category' && item ? { name: item.name, description: item.description || '' } : type === 'location' && item ? { name: item.name, code: item.code || '', warehouseId: get(item, 'warehouseId', 'warehouse_id') || '' } : {});
   const [lines, setLines] = useState([{ productId: '', quantity: '' }]);
   const set = (key) => (e) => setValues({ ...values, [key]: e.target.value });
   const select = (label, key, options, required = true) => <label className="field"><span>{label}</span><select value={values[key] || ''} onChange={set(key)} required={required}><option value="">Select {label.toLowerCase()}</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>;
@@ -337,8 +371,8 @@ function EntityDialog({ type, item, data, busy, onClose, onSave }) {
     e.preventDefault();
     const payload = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, value === '' ? null : value]));
     if (type === 'product') onSave(item ? `/products/${item.id}` : '/products', item ? 'PUT' : 'POST', payload);
-    if (type === 'category') onSave('/categories', 'POST', payload);
-    if (type === 'location') onSave('/locations', 'POST', payload);
+    if (type === 'category') onSave(item ? `/categories/${item.id}` : '/categories', item ? 'PATCH' : 'POST', payload);
+    if (type === 'location') onSave(item ? `/locations/${item.id}` : '/locations', item ? 'PATCH' : 'POST', payload);
     if (type === 'warehouse') onSave('/warehouses', 'POST', payload);
     if (type === 'receipt' || type === 'delivery' || type === 'transfer' || type === 'adjustment') {
       const operation = {
@@ -352,7 +386,7 @@ function EntityDialog({ type, item, data, busy, onClose, onSave }) {
       onSave(`/operations/${({ receipt: 'receipts', delivery: 'deliveries', transfer: 'transfers', adjustment: 'adjustments' })[type]}`, 'POST', operation);
     }
   };
-  return <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><form className="modal panel" onSubmit={submit}><div className="modal-heading"><div><span className="eyebrow">INVENTORY CONTROL</span><h2>{kind}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={19} /></button></div><div className="modal-fields">
+  return <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><form className="modal panel" onSubmit={submit}><div className="modal-heading"><div><span className="eyebrow">INVENTORY CONTROL</span><h2>{kind}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={19} /></button></div>{error && <div className="alert alert-error" role="alert"><CircleAlert size={17} /><span>{error}</span><button type="button" onClick={onDismissError} aria-label="Dismiss error"><X size={16} /></button></div>}<div className="modal-fields">
     {type === 'product' && <>{field('Product name', 'name')}{field('SKU / product code', 'sku')}{select('Category', 'categoryId', data.categories, false)}{field('Unit of measure', 'unit')}{field('Reorder level', 'reorderLevel', { type: 'number', min: 0, step: 'any' })}</>}
     {type === 'category' && <>{field('Category name', 'name')}{field('Description', 'description', { required: false })}</>}
     {type === 'warehouse' && <>{field('Warehouse name', 'name')}{field('Warehouse code', 'code')}{field('Address', 'address', { required: false })}</>}
@@ -361,7 +395,7 @@ function EntityDialog({ type, item, data, busy, onClose, onSave }) {
     {type === 'delivery' && <>{field('Customer', 'partyName', { required: false })}{field('Reference', 'reference', { required: false })}{operationLines('Delivery lines')}{select('Source location', 'sourceLocationId', data.locations)}</>}
     {type === 'transfer' && <>{field('Reference', 'reference', { required: false })}{operationLines('Transfer lines')}{select('Source location', 'sourceLocationId', data.locations)}{select('Destination location', 'destinationLocationId', data.locations)}</>}
     {type === 'adjustment' && <>{field('Reference', 'reference', { required: false })}{operationLines('Counted product lines')}{select('Location', 'destinationLocationId', data.locations)}</>}
-  </div><div className="modal-footer"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}><Check size={15} />{busy ? 'Saving…' : 'Save draft'}</button></div></form></div>;
+  </div><div className="modal-footer"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={busy}><Check size={15} />{busy ? 'Saving…' : type === 'category' || type === 'product' || type === 'location' ? (item ? 'Save changes' : `Save ${type}`) : 'Save draft'}</button></div></form></div>;
 }
 
 export default App;

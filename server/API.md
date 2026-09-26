@@ -37,11 +37,13 @@ OTP expiry is configured with `OTP_EXPIRY_MINUTES`.
 | `GET /categories` | `{ "items": Category[] }` |
 | `POST /categories` | `Category` (`201`) |
 | `PATCH /categories/:id` | Updated `Category` |
-| `DELETE /categories/:id` | Empty `204` response |
+| `DELETE /categories/:id` | Empty `204` response; returns `409` if products are assigned to the category |
 | `GET /warehouses` | `{ "items": Warehouse[] }`; warehouses include a `locations` array |
 | `POST /warehouses` | `Warehouse` (`201`) |
 | `GET /locations` | `{ "items": Location[] }`; accepts `warehouseId` |
 | `POST /locations` | `Location` (`201`) |
+| `PATCH /locations/:id` | Updated `Location`; requires `warehouseId`, `name`, and `code` |
+| `DELETE /locations/:id` | Empty `204` response; returns `409` if stock, operations, or ledger history references the location |
 
 Products use `name`, `sku`, `categoryId`, `unit`, `reorderLevel`, and `active`.
 Categories use `name`, `description`; warehouses use `name`, `code`, `address`;
