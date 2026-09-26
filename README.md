@@ -338,7 +338,7 @@ These are possibilities, not current features:
 
 ## 19. Demo screenshots
 
-Screenshots can be added here when available. No screenshots are included in the repository yet.
+Screenshots will be added here when available. No screenshots are included in the repository yet.
 
 - Login
 - Dashboard
