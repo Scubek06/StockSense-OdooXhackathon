@@ -1,1194 +1,176 @@
-# StockSense — Inventory Management System
+# StockSense
 
-> **A modular, real-time inventory management platform designed to replace manual registers, spreadsheets, and fragmented stock-tracking workflows with a centralized system.**
+StockSense is a demo-ready inventory control application for tracking products, warehouses, stock operations, and an auditable movement ledger. It replaces scattered spreadsheets and manual stock registers with a single React interface backed by a PostgreSQL database and a REST API.
 
-StockSense is a full-stack Inventory Management System (IMS) that digitizes the complete stock lifecycle — from receiving goods to internal movement, delivery, physical stock adjustments, and historical tracking.
+## Problem statement
 
-The system is designed with a focus on **clean architecture, relational database design, modularity, validation, security, usability, and scalability**.
+Manual registers and disconnected spreadsheets make it difficult to keep stock accurate across multiple storage locations, identify shortages, and explain how inventory changed. StockSense centralizes the catalog and warehouse workflows and records each stock change with its operation and before/after quantities.
 
----
+## Features
 
-## 📌 Problem Statement
+- Register and sign in with password hashing, bearer-token protected APIs, profile display, logout, and a local OTP password reset flow.
+- Dashboard KPIs and filters for operation type, status, warehouse, location, and category.
+- Product and category management, SKU uniqueness, product search, and reorder thresholds.
+- Multiple warehouses and storage locations with stock tracked by location.
+- Receipts with supplier, deliveries with customer, internal transfers, and physical-count adjustments; stock changes only when validated.
+- Waiting and ready states for open operations, plus cancellation without a stock change.
+- Delivery validation rejects insufficient stock; transfers reject identical source and destination locations.
+- Transactional stock updates and a movement ledger with quantity snapshots, operation reference, actor, and timestamp.
+- Responsive dark warehouse-control UI with tactile, skeuomorphic surfaces, accessible form labels, validation feedback, and empty states.
+- PostgreSQL migration and development seed data.
 
-Many businesses still manage inventory using:
+## Modules
 
-* Manual registers
-* Excel spreadsheets
-* Paper-based stock records
-* Separate warehouse records
-* Scattered tracking systems
+| Module | Purpose |
+| --- | --- |
+| Dashboard | Inventory KPIs, recent moves, quick links, and operational filters |
+| Products / Categories | Product catalog, SKU, unit, category, search, and reorder level |
+| Warehouse | Warehouses, storage locations, and location-level stock |
+| Receipts | Receive stock into a location after validation |
+| Delivery orders | Dispatch stock from a location after validation |
+| Internal transfers | Move stock between locations without changing total inventory |
+| Adjustments | Reconcile a location to a physical count |
+| Move history | Review validated stock changes |
+| Profile / Settings | View the signed-in account and workspace information |
 
-These approaches make it difficult to maintain accurate stock levels, identify discrepancies, track product movement, and obtain a real-time view of warehouse operations.
-
-### StockSense solves this by providing
-
-* Centralized inventory management
-* Real-time stock tracking
-* Multi-warehouse support
-* Product and category management
-* Incoming and outgoing stock operations
-* Internal stock transfers
-* Physical stock adjustments
-* Stock movement history
-* Low-stock alerts
-* Dashboard-based monitoring
-
----
-
-# 🎯 Objectives
-
-StockSense aims to:
-
-1. Centralize all inventory-related operations.
-2. Maintain accurate stock quantities by location.
-3. Track every stock movement through a stock ledger.
-4. Reduce dependency on manual inventory records.
-5. Provide an intuitive interface for warehouse staff and inventory managers.
-6. Prevent invalid stock operations through server-side validation.
-7. Support multiple warehouses and storage locations.
-8. Provide a modular architecture that can be extended as the business grows.
-
----
-
-# 👥 Target Users
-
-### Inventory Manager
-
-Responsible for:
-
-* Managing products
-* Monitoring inventory
-* Creating receipts
-* Managing deliveries
-* Performing stock adjustments
-* Monitoring low-stock products
-* Reviewing stock movement history
-
-### Warehouse Staff
-
-Responsible for:
-
-* Receiving goods
-* Picking products
-* Shelving stock
-* Performing internal transfers
-* Counting physical stock
-* Updating warehouse operations
-
----
-
-# 🚀 Core Modules
-
-## 1. Authentication
-
-StockSense provides secure user authentication.
-
-### Features
-
-* User registration
-* Login
-* Logout
-* Password reset
-* OTP-based password recovery
-* Session management
-* Protected routes
-* Profile management
-
-Invalid input should generate clear user-facing validation messages instead of silent failures.
-
----
-
-# 2. Inventory Dashboard
-
-The dashboard provides a real-time overview of inventory operations.
-
-### KPIs
-
-* Total Products in Stock
-* Low Stock Items
-* Out of Stock Items
-* Pending Receipts
-* Pending Deliveries
-* Scheduled Internal Transfers
-
-### Dynamic Filters
-
-Users can filter inventory information by:
-
-* Document type
-* Operation status
-* Warehouse
-* Location
-* Product category
-
-### Supported Document Types
+## Architecture
 
 ```text
-Receipts
-Delivery Orders
-Internal Transfers
-Inventory Adjustments
+React + Vite client
+        │ REST / JSON (JWT bearer token)
+        ▼
+Express API ── authentication, validation, transactional inventory services
+        │ parameterized SQL
+        ▼
+PostgreSQL
 ```
 
-### Supported Statuses
+The application uses a conventional client/server split. Inventory writes are handled by the API; the browser does not directly access the database. Stock-changing operations lock and update the relevant stock rows and write ledger entries in the same database transaction.
 
-```text
-Draft
-Waiting
-Ready
-Done
-Canceled
-```
+## Database design
 
----
+The PostgreSQL schema relates `users`, `categories`, `products`, `warehouses`, `locations`, and location-level `stock`. The shared `operations` and `operation_items` tables represent receipts, deliveries, transfers, and adjustments. `stock_ledger` records each validated location-level change, operation, product, source/destination, actor, timestamp, and before/after quantities. Reorder thresholds are stored on products. `password_reset_tokens` and `revoked_tokens` support OTP resets and server-side JWT logout. Foreign keys, unique SKU constraints, and non-negative quantity checks protect data integrity.
 
-# 3. Product Management
+## Tech stack
 
-Products can be created and managed from a centralized interface.
+- Frontend: React, Vite, JavaScript, CSS, Lucide icons
+- Backend: Node.js, Express, REST/JSON
+- Database: PostgreSQL
+- Authentication: bcrypt password hashing and signed JWT bearer tokens
 
-### Product Fields
+## Setup
 
-* Product Name
-* SKU / Product Code
-* Category
-* Unit of Measure
-* Initial Stock
-* Reorder Level
-* Product Status
+### Requirements
 
-### Product Features
+- Node.js 20 or later and npm
+- PostgreSQL 14 or later
 
-* Create product
-* Update product
-* View product
-* Search by SKU
-* Search by name
-* Filter by category
-* View stock by location
-* Configure reordering rules
+### Configure environment
 
----
-
-# 4. Receipts — Incoming Stock
-
-Receipts are used when goods arrive from suppliers.
-
-### Workflow
-
-```text
-Create Receipt
-      ↓
-Select Supplier
-      ↓
-Add Products
-      ↓
-Enter Received Quantity
-      ↓
-Validate Receipt
-      ↓
-Stock Increased
-      ↓
-Stock Movement Logged
-```
-
-### Example
-
-A supplier delivers:
-
-```text
-Steel Rods = 50 units
-```
-
-After validation:
-
-```text
-Previous Stock = 100
-Received       = +50
-Current Stock  = 150
-```
-
-The transaction is also recorded in the stock ledger.
-
----
-
-# 5. Delivery Orders — Outgoing Stock
-
-Delivery orders manage products leaving the warehouse.
-
-### Workflow
-
-```text
-Create Delivery
-      ↓
-Select Products
-      ↓
-Pick
-      ↓
-Pack
-      ↓
-Validate
-      ↓
-Stock Decreased
-      ↓
-Stock Movement Logged
-```
-
-### Example
-
-```text
-Available Chairs = 50
-Delivered        = 10
-Remaining        = 40
-```
-
-The system prevents users from validating a delivery when sufficient stock is unavailable.
-
----
-
-# 6. Internal Transfers
-
-Internal transfers move stock between warehouses or locations without changing the company's total inventory.
-
-### Examples
-
-```text
-Main Warehouse → Production Floor
-
-Rack A → Rack B
-
-Warehouse 1 → Warehouse 2
-```
-
-### Workflow
-
-```text
-Create Transfer
-      ↓
-Select Source
-      ↓
-Select Destination
-      ↓
-Select Product
-      ↓
-Enter Quantity
-      ↓
-Validate
-      ↓
-Source Stock Decreased
-      ↓
-Destination Stock Increased
-      ↓
-Ledger Updated
-```
-
-### Important Rule
-
-An internal transfer does **not** change the total quantity of stock.
-
-It only changes its location.
-
----
-
-# 7. Inventory Adjustments
-
-Inventory adjustments reconcile system stock with physical stock.
-
-### Example
-
-System records:
-
-```text
-Steel = 100 kg
-```
-
-Physical count:
-
-```text
-Steel = 97 kg
-```
-
-Adjustment:
-
-```text
-Difference = -3 kg
-```
-
-After validation:
-
-```text
-System Stock = 97 kg
-```
-
-The adjustment is permanently recorded in the stock ledger.
-
----
-
-# 8. Stock Ledger
-
-The Stock Ledger is one of the most important components of StockSense.
-
-Every stock-changing operation generates a ledger entry.
-
-### Ledger records include
-
-* Product
-* SKU
-* Source location
-* Destination location
-* Quantity
-* Operation type
-* Reference document
-* Previous quantity
-* Quantity changed
-* Resulting quantity
-* User
-* Timestamp
-
-### Example
-
-| Operation  | Product | Location          | Quantity | Effect          |
-| ---------- | ------- | ----------------- | -------: | --------------- |
-| Receipt    | Steel   | Main Warehouse    |      100 | +100            |
-| Transfer   | Steel   | Main → Production |      100 | Location Change |
-| Delivery   | Steel   | Production        |       20 | -20             |
-| Adjustment | Steel   | Production        |        3 | -3              |
-
-This provides traceability for every inventory movement.
-
----
-
-# 🏭 Warehouse Management
-
-StockSense supports multiple warehouses and storage locations.
-
-### Example
-
-```text
-Warehouse 1
-│
-├── Rack A
-├── Rack B
-└── Production Area
-
-Warehouse 2
-│
-├── Rack A
-└── Finished Goods
-```
-
-Stock can therefore be tracked at a location level rather than only at the global product level.
-
----
-
-# 🔔 Low Stock & Reordering
-
-Products can have configurable reorder levels.
-
-Example:
-
-```text
-Product: Steel Rod
-Current Stock: 15
-Reorder Level: 20
-```
-
-The system identifies the product as:
-
-```text
-LOW STOCK
-```
-
-If stock reaches zero:
-
-```text
-OUT OF STOCK
-```
-
-These conditions are surfaced through the dashboard.
-
----
-
-# 🔍 Search & Filtering
-
-StockSense provides smart inventory discovery through:
-
-* Product name search
-* SKU search
-* Category filtering
-* Warehouse filtering
-* Location filtering
-* Operation type filtering
-* Status filtering
-* Date-based movement history
-
----
-
-# 🧩 Navigation
-
-The application follows a modular sidebar structure.
-
-```text
-Dashboard
-
-Products
-├── All Products
-├── Categories
-└── Reordering Rules
-
-Operations
-├── Receipts
-├── Delivery Orders
-├── Inventory Adjustments
-└── Move History
-
-Warehouse
-├── Warehouses
-└── Locations
-
-Settings
-
-Profile
-├── My Profile
-└── Logout
-```
-
----
-
-# 🏗️ Architecture
-
-StockSense follows a modular full-stack architecture.
-
-```text
-┌──────────────────────────────┐
-│          Frontend            │
-│                              │
-│ Dashboard / Forms / Tables   │
-│ Filters / Validation / UI    │
-└──────────────┬───────────────┘
-               │
-               │ REST API
-               ▼
-┌──────────────────────────────┐
-│          Backend             │
-│                              │
-│ Authentication              │
-│ Product Service              │
-│ Inventory Service            │
-│ Receipt Service              │
-│ Delivery Service             │
-│ Transfer Service             │
-│ Adjustment Service           │
-│ Ledger Service               │
-└──────────────┬───────────────┘
-               │
-               │ SQL
-               ▼
-┌──────────────────────────────┐
-│      Relational Database     │
-│                              │
-│ Users                        │
-│ Products                     │
-│ Warehouses                   │
-│ Locations                    │
-│ Operations                   │
-│ Stock                        │
-│ Stock Ledger                 │
-└──────────────────────────────┘
-```
-
-The architecture intentionally avoids unnecessary dependence on Backend-as-a-Service platforms.
-
----
-
-# 🗄️ Database Design
-
-The application uses a relational database to maintain structured inventory data.
-
-### Main entities
-
-```text
-users
-products
-categories
-warehouses
-locations
-stock
-receipts
-receipt_items
-deliveries
-delivery_items
-internal_transfers
-transfer_items
-inventory_adjustments
-stock_ledger
-reorder_rules
-```
-
-### Relationships
-
-```text
-Category
-   │
-   └── Products
-          │
-          ├── Stock
-          │      └── Location
-          │
-          ├── Receipts
-          ├── Deliveries
-          ├── Transfers
-          └── Adjustments
-
-Warehouse
-   │
-   └── Locations
-          │
-          └── Stock
-```
-
-Database constraints and transactions should be used to maintain inventory consistency.
-
----
-
-# 🔐 Security
-
-Security is considered at both the application and database levels.
-
-### Security practices
-
-* Password hashing
-* Protected API endpoints
-* Authentication middleware
-* Role-aware authorization
-* Server-side validation
-* Input sanitization
-* SQL injection prevention
-* Secure session handling
-* Environment variables for secrets
-* No hardcoded credentials
-* Controlled error responses
-
-Sensitive credentials must never be committed to the repository.
-
----
-
-# ✅ Validation
-
-StockSense performs validation on both the client and server.
-
-Examples:
-
-```text
-Invalid email
-        ↓
-"Please enter a valid email address."
-```
-
-```text
-Delivery quantity > available stock
-        ↓
-"Insufficient stock available."
-```
-
-```text
-Transfer source = destination
-        ↓
-"Source and destination locations must be different."
-```
-
-```text
-Negative quantity
-        ↓
-"Quantity must be greater than zero."
-```
-
-Validation errors should be clear, actionable, and user-friendly.
-
----
-
-# 📊 Inventory Flow
-
-The complete inventory lifecycle can be represented as:
-
-```text
-                 SUPPLIER
-                    │
-                    ▼
-              ┌───────────┐
-              │  RECEIPT  │
-              └─────┬─────┘
-                    │
-                    ▼
-              ┌───────────┐
-              │   STOCK   │
-              └─────┬─────┘
-                    │
-              ┌─────┴─────┐
-              │           │
-              ▼           ▼
-         INTERNAL      DELIVERY
-         TRANSFER      ORDER
-              │           │
-              ▼           ▼
-          LOCATION      CUSTOMER
-           CHANGE
-              │
-              ▼
-        STOCK ADJUSTMENT
-              │
-              ▼
-        ┌──────────────┐
-        │ STOCK LEDGER │
-        └──────────────┘
-```
-
----
-
-# 🛠️ Technology Stack
-
-> The final stack should use technologies appropriate for a production-style full-stack application and a relational database.
-
-### Frontend
-
-* React
-* HTML5
-* CSS3
-* JavaScript
-* Responsive UI components
-
-### Backend
-
-* Node.js
-* Express.js
-* REST APIs
-
-### Database
-
-* PostgreSQL
-
-### Development Tools
-
-* Git
-* GitHub
-* VS Code
-* Postman / API testing tools
-
----
-
-# 📁 Project Structure
-
-```text
-stocksense/
-│
-├── client/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── layouts/
-│   │   ├── services/
-│   │   ├── hooks/
-│   │   └── utils/
-│   └── package.json
-│
-├── server/
-│   ├── src/
-│   │   ├── controllers/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   ├── models/
-│   │   ├── middleware/
-│   │   ├── validators/
-│   │   ├── utils/
-│   │   └── config/
-│   └── package.json
-│
-├── database/
-│   ├── migrations/
-│   ├── seeds/
-│   └── schema/
-│
-├── docs/
-│   ├── architecture/
-│   └── api/
-│
-├── .env.example
-├── .gitignore
-├── README.md
-└── package.json
-```
-
----
-
-# ⚙️ Local Development
-
-## Prerequisites
-
-Install:
-
-* Node.js
-* npm
-* PostgreSQL
-* Git
-
-Verify installation:
-
-```bash
-node --version
-npm --version
-psql --version
-git --version
-```
-
----
-
-## 1. Clone Repository
-
-```bash
-git clone <repository-url>
-cd stocksense
-```
-
----
-
-## 2. Configure Environment Variables
-
-Create the required environment files using the provided examples.
+From the repository root:
 
 ```bash
 cp .env.example .env
 ```
 
-Configure:
+Set the PostgreSQL connection string and a long, random JWT secret in `.env`. Never commit `.env`.
+Generate a signing secret with `openssl rand -base64 32`. In Codespaces, set `CLIENT_URL` to the forwarded client origin for port `5173` (comma-separate it with `http://localhost:5173` if both are used).
 
-```env
-DATABASE_URL=
-JWT_SECRET=
-OTP_EXPIRY=
-PORT=
-CLIENT_URL=
-```
+### Create the database
 
-Never commit `.env` files.
-
----
-
-## 3. Install Dependencies
-
-```bash
-npm install
-```
-
-Install frontend and backend dependencies according to their respective package configuration.
-
----
-
-## 4. Setup Database
-
-Create the PostgreSQL database and execute the project's migrations.
-
-Example:
+Create an empty PostgreSQL database matching the database name in `DATABASE_URL`, for example:
 
 ```bash
 createdb stocksense
 ```
 
-Then run:
+If PostgreSQL is not installed in Codespaces but Docker is available, start a local development database with a generated password:
+
+```bash
+export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+docker run --name stocksense-postgres -e POSTGRES_USER=stocksense \
+  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" -e POSTGRES_DB=stocksense \
+  -p 5432:5432 -d postgres:16-alpine
+```
+
+Set `DATABASE_URL` in `.env` to `postgresql://stocksense:<generated-password>@localhost:5432/stocksense`.
+
+Apply the schema and seed demo data:
 
 ```bash
 npm run migrate
-```
-
-Seed development data if available:
-
-```bash
 npm run seed
 ```
 
----
+### Install and run
 
-## 5. Start Development Server
+```bash
+npm install
+npm install --prefix client
+```
+
+Run the API and frontend in separate terminals:
 
 ```bash
 npm run dev
+npm run dev --prefix client
 ```
 
-The frontend and backend should then be available through their configured development ports.
+The Express API uses port `3000`; Vite serves the client on port `5173` and proxies `/api` requests to the API. In GitHub Codespaces, forward both ports. The seed script creates a demo user, example catalog, locations, and opening stock recorded in the ledger. Set `DEMO_PASSWORD` in `.env` to choose the demo password; if it is unset, the development seed generates and prints a random one.
 
----
+Build the production client with:
 
-# 🔌 API Design
-
-The backend exposes modular REST endpoints.
-
-### Authentication
-
-```text
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/forgot-password
-POST /api/auth/verify-otp
-POST /api/auth/reset-password
-POST /api/auth/logout
+```bash
+npm run build --prefix client
 ```
 
-### Products
+## Environment variables
 
-```text
-GET    /api/products
-POST   /api/products
-GET    /api/products/:id
-PUT    /api/products/:id
-DELETE /api/products/:id
-```
+See `.env.example` for the authoritative variable list. Configure the PostgreSQL URL, JWT signing secret (at least 24 characters), API port, OTP expiry, and client origin there. Local reset codes are returned only outside production; add a real mail/SMS provider before public deployment.
 
-### Receipts
+## API overview
 
-```text
-GET  /api/receipts
-POST /api/receipts
-GET  /api/receipts/:id
-POST /api/receipts/:id/validate
-```
+All routes are under `/api`. Protected routes accept `Authorization: Bearer <token>`.
 
-### Deliveries
+| Resource | Routes |
+| --- | --- |
+| Health | `GET /api/health` |
+| Authentication | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `PATCH /api/auth/profile`, `POST /api/auth/logout`, `POST /api/auth/reset/request`, `POST /api/auth/reset/confirm` |
+| Catalog | `GET/POST /api/products`, `PATCH/PUT/DELETE /api/products/:id`, `GET/POST/PATCH/DELETE /api/categories` |
+| Warehouses | `GET/POST /api/warehouses`, `GET/POST /api/locations` |
+| Stock | `GET /api/stock` |
+| Dashboard | `GET /api/dashboard` (supports `kind`, `status`, `warehouseId`, `locationId`, and `categoryId`) |
+| Operations | `GET/POST /api/operations/receipts`, `/deliveries`, `/transfers`, `/adjustments`; `PATCH /api/operations/:type/:id/status`, `POST /api/operations/:type/:id/validate`, `POST /api/operations/:type/:id/cancel` |
+| Ledger | `GET /api/ledger` |
 
-```text
-GET  /api/deliveries
-POST /api/deliveries
-GET  /api/deliveries/:id
-POST /api/deliveries/:id/validate
-```
+Validation failures return an HTTP error with a user-readable message. A document is created as a draft; its stock effect and ledger entries are applied only when its validate route succeeds.
 
-### Transfers
+## Demo workflow
 
-```text
-GET  /api/transfers
-POST /api/transfers
-GET  /api/transfers/:id
-POST /api/transfers/:id/validate
-```
+1. Register an account and sign in.
+2. Create a product such as **Steel** and set its SKU, unit, category, and reorder level.
+3. Create a receipt for 100 units at a warehouse location. Confirm it is still a draft and stock has not yet changed.
+4. Validate the receipt and check the product’s on-hand quantity and the move history.
+5. Create and validate a transfer of 20 units to a Production Rack; verify source and destination quantities.
+6. Create and validate a delivery for 10 units from the Production Rack.
+7. Create an inventory adjustment using the counted physical quantity and validate it.
+8. Check the ledger for each validated operation, then return to the dashboard and review the KPIs.
 
-### Adjustments
+## Security
 
-```text
-GET  /api/adjustments
-POST /api/adjustments
-POST /api/adjustments/:id/validate
-```
+- Passwords are stored as bcrypt hashes; secrets are loaded from environment variables.
+- Inventory and account APIs require authentication, and SQL values are parameterized.
+- Server-side validation and database constraints guard identifiers, quantities, SKUs, and stock availability.
+- Stock changes and ledger writes share database transactions.
+- Logout revokes the server-side token; tokens also expire according to server configuration. Use HTTPS and a real mail/SMS OTP provider before deploying a password-reset flow publicly.
 
-### Ledger
+## Hackathon evaluation alignment
 
-```text
-GET /api/ledger
-GET /api/ledger/:productId
-```
+StockSense demonstrates a usable React/Express/PostgreSQL architecture, relational constraints, secured REST endpoints, transactional inventory workflows, operational dashboard filters, a complete demo path, and a restrained skeuomorphic warehouse interface. The demo avoids external database-as-a-service dependencies and does not claim integrations that are not included.
 
-### Dashboard
+## Future scope
 
-```text
-GET /api/dashboard/summary
-GET /api/dashboard/operations
-```
-
----
-
-# 🔄 Stock Transaction Rules
-
-Stock changes must occur only when an operation is successfully validated.
-
-### Receipt
-
-```text
-Stock = Stock + Received Quantity
-```
-
-### Delivery
-
-```text
-Stock = Stock - Delivered Quantity
-```
-
-### Internal Transfer
-
-```text
-Source Location = Source Location - Quantity
-Destination Location = Destination Location + Quantity
-```
-
-### Adjustment
-
-```text
-Stock = Counted Quantity
-```
-
-Every successful stock mutation must create a corresponding ledger record.
-
----
-
-# 🧪 Testing
-
-Testing should cover:
-
-### Authentication
-
-* Valid registration
-* Duplicate email
-* Invalid email
-* Incorrect password
-* OTP expiration
-* Invalid OTP
-* Password reset
-
-### Products
-
-* Product creation
-* Duplicate SKU
-* Invalid quantity
-* Category filtering
-* Product search
-
-### Inventory
-
-* Receipt validation
-* Delivery validation
-* Insufficient stock
-* Internal transfer
-* Invalid source/destination
-* Stock adjustment
-* Ledger consistency
-
-### Security
-
-* Unauthorized API requests
-* Invalid authentication tokens
-* Role-based access
-* Malicious input
-* SQL injection attempts
-
----
-
-# 📈 Performance & Scalability
-
-StockSense is designed so that additional functionality can be introduced without rewriting the entire application.
-
-Potential future extensions include:
-
-* Barcode scanning
-* QR code support
-* Purchase orders
-* Sales orders
-* Supplier management
-* Customer management
-* Advanced analytics
-* Audit logs
-* Role-based permissions
-* Automated purchase suggestions
-* Inventory forecasting
-* Export to CSV/PDF
-
----
-
-# 🤖 Optional Intelligent Features
-
-AI should only be introduced where it provides genuine business value.
-
-Potential applications include:
-
-* Demand forecasting
-* Stock replenishment suggestions
-* Inventory anomaly detection
-* Natural-language inventory queries
-* Automated inventory insights
-
-AI functionality should remain modular and must not become a dependency for basic inventory operations.
-
----
-
-# 🎨 UI/UX Principles
-
-The interface follows:
-
-* Consistent color system
-* Clear visual hierarchy
-* Responsive layouts
-* Intuitive navigation
-* Meaningful empty states
-* Loading states
-* Error states
-* Confirmation dialogs
-* Accessible form controls
-* Consistent tables and filters
-* Clear success/error feedback
-
-The primary goal is to make common inventory operations quick and understandable for warehouse staff.
-
----
-
-# 🌱 Git & Collaboration
-
-Development follows a collaborative Git workflow.
-
-Example:
-
-```text
-main
- │
- ├── feature/authentication
- ├── feature/products
- ├── feature/receipts
- ├── feature/deliveries
- ├── feature/transfers
- └── feature/dashboard
-```
-
-Each contributor should work on a dedicated feature branch and submit changes through pull requests.
-
-Commits should describe the actual change:
-
-```text
-feat: add product management API
-feat: implement receipt validation
-fix: prevent negative stock
-feat: add inventory dashboard
-fix: validate duplicate SKU
-```
-
----
-
-# 📋 Hackathon Evaluation Alignment
-
-StockSense is designed around the technical areas emphasized by the Odoo Hackathon.
-
-| Evaluation Area    | StockSense Approach                          |
-| ------------------ | -------------------------------------------- |
-| Database Design    | Relational PostgreSQL model                  |
-| Backend/API        | Modular REST API                             |
-| Coding Standards   | Separation of concerns                       |
-| Modularity         | Independent domain modules                   |
-| Frontend Design    | Consistent responsive UI                     |
-| Performance        | Efficient queries and indexed fields         |
-| Scalability        | Service-based modular architecture           |
-| Security           | Authentication, authorization and validation |
-| Usability          | Simple inventory workflows                   |
-| Debugging          | Structured errors and logging                |
-| Problem Solving    | Complete inventory lifecycle                 |
-| Data Integrity     | Transactions + stock ledger                  |
-| Team Collaboration | Git feature-branch workflow                  |
-
----
-
-# 🚧 Development Philosophy
-
-StockSense follows these principles:
-
-### 1. Build from scratch
-
-Core inventory functionality should be implemented within the application rather than depending heavily on third-party backend platforms.
-
-### 2. Database first
-
-Inventory is fundamentally a data-consistency problem. Database relationships, constraints, transactions, and indexing are treated as first-class design concerns.
-
-### 3. Validate everything
-
-User input should never be blindly trusted.
-
-### 4. Keep modules independent
-
-Each domain should have a clear responsibility.
-
-```text
-Authentication
-Products
-Inventory
-Receipts
-Deliveries
-Transfers
-Adjustments
-Ledger
-Dashboard
-```
-
-### 5. Every stock movement must be traceable
-
-No silent inventory changes.
-
-### 6. UI should reflect business logic
-
-The interface should make invalid operations difficult to perform.
-
----
-
-# 📸 Mockup
-
-The initial UI/UX reference for StockSense:
-
-[View StockSense Excalidraw Mockup](https://link.excalidraw.com/l/65VNwvy7c4X/3ENvQFu9o8R)
-
----
-
-# 🗺️ Roadmap
-
-### Phase 1 — Foundation
-
-* [x] Project setup
-* [ ] Database schema
-* [ ] Authentication
-* [ ] User profile
-* [ ] Application layout
-
-### Phase 2 — Inventory
-
-* [ ] Products
-* [ ] Categories
-* [ ] Warehouses
-* [ ] Locations
-* [ ] Stock tracking
-
-### Phase 3 — Operations
-
-* [ ] Receipts
-* [ ] Delivery Orders
-* [ ] Internal Transfers
-* [ ] Inventory Adjustments
-* [ ] Stock Ledger
-
-### Phase 4 — Dashboard
-
-* [ ] Inventory KPIs
-* [ ] Dynamic filters
-* [ ] Low-stock alerts
-* [ ] Operation summaries
-
-### Phase 5 — Quality
-
-* [ ] API testing
-* [ ] Security testing
-* [ ] Input validation
-* [ ] Error handling
-* [ ] Performance optimization
-* [ ] UI refinement
-
-### Phase 6 — Deployment
-
-* [ ] Production database
-* [ ] Backend deployment
-* [ ] Frontend deployment
-* [ ] Environment configuration
-* [ ] Final testing
-
----
-
-# 👨‍💻 Team
-
-**StockSense — Odoo Hackathon**
-
-Built with a focus on:
-
-> **Clean Architecture • Strong Database Design • Modular Development • Real-World Usability**
-
----
-
-# 📄 License
-
-This project is developed for the Odoo Hackathon and educational/professional evaluation purposes.
+- Richer pick/pack and delivery tracking.
+- Production OTP delivery, reset-attempt rate limiting, and fine-grained role permissions.
+- CSV import/export, barcode scanning, and supplier/customer records.
+- More advanced reporting, audit exports, and automated reorder suggestions.
